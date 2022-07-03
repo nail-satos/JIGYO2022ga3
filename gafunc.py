@@ -170,6 +170,8 @@ def evaluation_individual(df_shift: pd.DataFrame, df_norma: pd.DataFrame, cap_pa
                 status_idx = 1  # 交換時
             if status == 0:
                 status_idx = 2  # 遊休時
+            if status == -1:
+                status_idx = 2  # 淘汰した親類（パラメータは交換時で代用）
 
             # CO2排出量を加算
             df_co2.iloc[machine_no, hour] = df_co2.iloc[machine_no, hour] + co2_params_list[machine_no][status_idx]
@@ -196,7 +198,7 @@ def generate_n_generation(df: pd.DataFrame):
     return(df)
 
 
-# 2つの個体（遺伝子）を受け取り、一点交叉を行う関数
+# 2つの個体（遺伝子）を受け取り、一様交叉を行う関数
 def uniform_crossover_individuals(df1: pd.DataFrame, df2: pd.DataFrame, mutation_rate: int):
 
     # データフレームを1次元のリストに変換
@@ -220,14 +222,18 @@ def uniform_crossover_individuals(df1: pd.DataFrame, df2: pd.DataFrame, mutation
 
     rnd_per = random.randint(0, 100)
     if rnd_per < mutation_rate:
-        # 突然変異を発生
-        rnd_idx = random.randint(0, len(new_list) - 1)
-        rnd_sts = random.randint(0,3)
-        print(f'{rnd_idx} →　{new_list[rnd_idx]}')
-        new_list[rnd_idx] = rnd_sts
-        print(f'{rnd_idx} →　{new_list[rnd_idx]}')
-        print(f'に突然変異しました')
 
+        while 1 == 1:
+            # 突然変異を発生
+            rnd_idx = random.randint(0, len(new_list) - 1)
+            rnd_sts = random.randint(0,3)
+
+            if new_list[rnd_idx] != rnd_sts:
+                # print(f'{rnd_idx} →　{new_list[rnd_idx]}')
+                new_list[rnd_idx] = rnd_sts
+                # print(f'{rnd_idx} →　{new_list[rnd_idx]}')
+                # print(f'に突然変異しました')            
+                break
 
     # 1次元リストを2次元リストに変換
     new_list_2d = [new_list[i:i + 24] for i in range(0, len(new_list), 24)]
@@ -269,11 +275,48 @@ def single_crossover_individuals(df1: pd.DataFrame, df2: pd.DataFrame, mutation_
     return df_new
 
 
+# 世代の全個体（データフレーム）が格納されたリストを受け取り、重複している個体をALL-1で置き換える関数
+def replace_duplicates_individuals(df_list: list):
+
+    ret_df_list = []    # 戻り値用のリスト（2次元に整形し直した全個体dfを格納する）
+
+    # インデックス名とカラム名を保存（戻り値用）
+    df_template = copy.deepcopy(df_list[0])
+
+    lists = []
+    for df in df_list:
+        # データフレームを1次元のリストに変換
+        list1 = df.values.tolist()
+        list1 = list(itertools.chain.from_iterable(list1))
+        lists.append(list1)
+
+    # 作業用データフレームに変換
+    df_temp = pd.DataFrame(lists)
+
+    # 評価用の遺伝子が重複している個体（親戚）は、最初の1件を残して-1に置換
+    df_temp[df_temp.duplicated(keep='first')] = -1
+    new_lists = df_temp.values.tolist()
+
+    for new_list in new_lists:
+        # 1次元リストを2次元リストに変換
+        new_list_2d = [new_list[i:i + 24] for i in range(0, len(new_list), 24)]
+
+        # リストをデータフレームに変換
+        df_new = pd.DataFrame(new_list_2d, index=df_template.index, columns=df_template.columns)
+        ret_df_list.append(df_new)
+    
+    print('重複置換後：len(ret_df_list)')
+    print(ret_df_list)
+
+    return ret_df_list
+
+
 # 引数（全個体のシフト, 各種ペナルティのリスト, 突然変異の割合）
 def generate_next_generation(n: int, df_shift_list : list, loss_list: list, mutation_rate: int, choice_crossover: str):
 
+
     # 全個体のスコアを格納しておくデータフレームを生成
-    df_score = pd.DataFrame(columns=['生産不足', '生産過多', 'CO2排出量', '交換作業', '合計スコア'])
+    df_score = pd.DataFrame(columns=['生産不足(評価値)', '生産過多(評価値)', 'CO2排出量(評価値)', '交換作業(評価値)', '合計(評価値)', '生産不足(個数)', 'CO2排出量(24h)'])
     score_lists = []    # df_scoreに代入するための作業用のリスト
 
     # 評価用の個体を格納しておくリスト
@@ -293,19 +336,38 @@ def generate_next_generation(n: int, df_shift_list : list, loss_list: list, muta
         df_shift_evaluation = pd.DataFrame(temp_shift_list,  index=['マシンＡ', 'マシンＢ', 'マシンＣ'])
         df_shift_evaluation_list.append(df_shift_evaluation)
 
-        # 個体を評価する
-        df_norma = st.session_state.df_norma                # 製造指示（ノルマ）を読み込み
-        cap_params_list = st.session_state.cap_params_list  # 部品製造能力を読み込み
-        co2_params_list = st.session_state.co2_params_list  # ＣＯ２排出量を読み込み
+    # 世代の全個体（データフレーム）が格納されたリストを受け取り、重複している個体をALL-1で置き換える
+    # 評価用の遺伝子が同じ個体（親類）を、最初の1件以外を残して淘汰する（親類が増えることによる収束防止）
+    df_shift_evaluation_list = replace_duplicates_individuals(df_shift_evaluation_list)
+
+    # 個体を評価する
+    df_norma = st.session_state.df_norma                # 製造指示（ノルマ）を読み込み
+    cap_params_list = st.session_state.cap_params_list  # 部品製造能力を読み込み
+    co2_params_list = st.session_state.co2_params_list  # ＣＯ２排出量を読み込み
+
+    # リストから個体を1つずつ取り出し
+    for idx, df_shift_evaluation in enumerate(df_shift_evaluation_list):
 
         # 生産ノルマを守れているかの評価 ＆ ＣＯ２排出量を評価
         score_list = evaluation_individual(df_shift_evaluation, df_norma, cap_params_list, co2_params_list, loss_list)
 
-        incomplete_score = score_list[0]    # 生産不足のペナルティスコア
-        complete_score = score_list[1]      # 生産過多のペナルティスコア
-        co2_score = score_list[2]           # CO2排出量のペナルティスコア
-        change_score = score_list[3]        # 交換作業のペナルティスコア
-        total_score = score_list[4]         # 合計スコア
+        # incomplete_score = score_list[0]    # 生産不足のペナルティスコア
+        # complete_score = score_list[1]      # 生産過多のペナルティスコア
+        # co2_score = score_list[2]           # CO2排出量のペナルティスコア
+        # change_score = score_list[3]        # 交換作業のペナルティスコア
+        # total_score = score_list[4]         # 合計スコア
+
+        # # ペナルティをリストから復元
+        # incomplete_loss = loss_list[0]  # 生産不足のペナルティ
+        # complete_loss   = loss_list[1]  # 生産過多のペナルティ
+        # co2_loss        = loss_list[2]  # CO2排出量のペナルティ
+        # change_loss     = loss_list[3]  # 交換作業のペナルティ
+
+        # score_list[5] : 生産不足の個数を求める（ペナルティスコア ÷ ペナルティ）
+        score_list.append(round(score_list[0] / loss_list[0]) * -1)
+
+        # score_list[6] : CO2の排出量を求める（ペナルティスコア ÷ ペナルティ）
+        score_list.append(round(score_list[2] / loss_list[2]) * -1)
 
         # # 第n世代の表示
         # display_individual('第n世代(個体:' + str(idx) + '番) ※遺伝子', df_shift, score_list)
@@ -318,7 +380,7 @@ def generate_next_generation(n: int, df_shift_list : list, loss_list: list, muta
     df_score_sort = pd.DataFrame(score_lists, columns=df_score.columns)
 
     # 合計スコアの降順に並び替え
-    df_score_sort = df_score_sort.sort_values('合計スコア', ascending=False)
+    df_score_sort = df_score_sort.sort_values('合計(評価値)', ascending=False)
     display_table('第' + str(n) + '世代 スコア一覧表（ベスト10）', df_score_sort.head(10))
 
     # 全個体の遺伝子を（一時的に）格納しておくリスト
@@ -351,9 +413,18 @@ def generate_next_generation(n: int, df_shift_list : list, loss_list: list, muta
     best_score_list = df_score_sort.iloc[0, :].values.tolist()
     # display_individual('第' + str(n) + '世代 最優秀個体', df_shift_next_list[0], best_score_list)
 
-
-    # 評価用個体の表示（交換の9を取り除いた純粋な遺伝子のみ）
+    # 評価用個体の表示（交換の9を取り除かない0～23hの遺伝子）
     display_individual('第' + str(n) + '世代 最優秀個体', df_shift_evaluation_sort_list[0], best_score_list)
+
+    # 評価用個体の表示（交換の9を取り除かない0～23hの遺伝子）
+    display_individual('第' + str(n) + '世代 No.2 個体', df_shift_evaluation_sort_list[1], df_score_sort.iloc[1, :].values.tolist())
+
+    # # デバッグ用
+    # display_individual('第' + str(n) + '世代 最優秀個体(遺伝子)', df_shift_sort_list[0], best_score_list)
+
+    # # デバッグ用
+    # display_individual('第' + str(n) + '世代 次優秀個体(遺伝子)', df_shift_sort_list[1], df_score_sort.iloc[1, :].values.tolist())
+
 
     i = 1
     for idx1, df1 in enumerate(df_shift_sort_list):
