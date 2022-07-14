@@ -312,7 +312,7 @@ def main():
         st.image(image)
 
         st.markdown("Built by [Nail Team]")
-        st.text("Version 1.3")
+        st.text("Version 1.4")
         st.markdown("For More Information check out   (https://nai-lab.com/)")
         
 
