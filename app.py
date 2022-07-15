@@ -60,9 +60,9 @@ def main():
 
         # パラーメータの初期設定（製造能力:キャパシティ）
         temp = []
-        temp.append([10, 10,  5])   # マシンA（部品α、部品β、部品γ）
-        temp.append([ 7,  5,  3])   # マシンB（部品α、部品β、部品γ）
-        temp.append([ 5,  4,  2])   # マシンC（部品α、部品β、部品γ）
+        temp.append([15, 10,  5])   # マシンA（部品α、部品β、部品γ）
+        temp.append([ 8,  4,  3])   # マシンB（部品α、部品β、部品γ）
+        temp.append([70, 30, 20])   # マシンC（部品α、部品β、部品γ）
         st.session_state.cap_params_list = temp
 
         # パラメータの初期設定（稼働率）
