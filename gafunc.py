@@ -367,13 +367,13 @@ def generate_next_generation(n: int, df_shift_list : list, loss_list: list, muta
         if loss_list[0] > 0 :
             score_list.append(round(score_list[0] / loss_list[0]) * -1)
         else:
-            score_list.append(0)    # ゼロによる除算を回避
+            score_list.append(score_list[0])    # ゼロによる除算を回避
 
         # score_list[6] : CO2の排出量を求める（ペナルティスコア ÷ ペナルティ）
         if loss_list[2] > 0 :
             score_list.append(round(score_list[2] / loss_list[2]) * -1)
         else:
-            score_list.append(0)    # ゼロによる除算を回避
+            score_list.append(score_list[0])    # ゼロによる除算を回避
 
         # # 第n世代の表示
         # display_individual('第n世代(個体:' + str(idx) + '番) ※遺伝子', df_shift, score_list)
